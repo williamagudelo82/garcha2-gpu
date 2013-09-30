@@ -87,11 +87,10 @@ void PointGroup<scalar_type>::solve(Timers& timers, bool compute_rmm, bool lda, 
   threadGrid = dim3(number_of_points,block_height,1);
 
   CudaMatrix<scalar_type> factors_gpu;
-  
   CudaMatrix<scalar_type> partial_densities_gpu;  
-  CudaMatrix<vec_type<scalar_type,4> > dxyz_gpu;
-  CudaMatrix<vec_type<scalar_type,4> > dd1_gpu;
-  CudaMatrix<vec_type<scalar_type,4> > dd2_gpu;
+  CudaMatrix<vec_type<scalar_type,WIDTH> > dxyz_gpu;
+  CudaMatrix<vec_type<scalar_type,WIDTH> > dd1_gpu;
+  CudaMatrix<vec_type<scalar_type,WIDTH> > dd2_gpu;
 
   partial_densities_gpu.resize(COALESCED_DIMENSION(number_of_points), block_height);
   dxyz_gpu.resize(COALESCED_DIMENSION(number_of_points),block_height);
@@ -168,7 +167,7 @@ void PointGroup<scalar_type>::solve(Timers& timers, bool compute_rmm, bool lda, 
     threadBlock = dim3(DENSITY_DERIV_BLOCK_SIZE);
     threadGrid = divUp(threads, threadBlock);
 
-    CudaMatrix<vec_type4> dd_gpu(COALESCED_DIMENSION(number_of_points), total_nucleii()); dd_gpu.zero();
+    CudaMatrix<vec_type3> dd_gpu(COALESCED_DIMENSION(number_of_points), total_nucleii()); dd_gpu.zero();
     CudaMatrixUInt nuc_gpu(func2local_nuc);  // TODO: esto en realidad se podria guardar una sola vez durante su construccion
 
     gpu_compute_density_derivs<<<threadGrid, threadBlock>>>(function_values.data, gradient_values.data, rmm_input_gpu.data, nuc_gpu.data, dd_gpu.data, number_of_points, group_m, total_nucleii());
@@ -176,7 +175,7 @@ void PointGroup<scalar_type>::solve(Timers& timers, bool compute_rmm, bool lda, 
     timers.density_derivs.pause_and_sync();
 
     timers.forces.start_and_sync();
-    CudaMatrix<vec_type4> forces_gpu(total_nucleii());
+    CudaMatrix<vec_type3> forces_gpu(total_nucleii());
 
     threads = dim3(total_nucleii());
     threadBlock = dim3(FORCE_BLOCK_SIZE);
@@ -184,10 +183,10 @@ void PointGroup<scalar_type>::solve(Timers& timers, bool compute_rmm, bool lda, 
     gpu_compute_forces<<<threadGrid, threadBlock>>>(number_of_points, factors_gpu.data, dd_gpu.data, forces_gpu.data, total_nucleii());
     cudaAssertNoError("forces");
 
-    HostMatrix<vec_type4> forces_cpu(forces_gpu);
+    HostMatrix<vec_type3> forces_cpu(forces_gpu);
 
     for (uint i = 0; i < total_nucleii(); ++i) {
-      vec_type4 atom_force = forces_cpu(i);
+      vec_type3 atom_force = forces_cpu(i);
       uint global_nuc = local2global_nuc[i];
       fort_forces(global_nuc, 0) += atom_force.x;
       fort_forces(global_nuc, 1) += atom_force.y;
@@ -231,16 +230,16 @@ void PointGroup<scalar_type>::solve(Timers& timers, bool compute_rmm, bool lda, 
 template<class scalar_type>
 void PointGroup<scalar_type>::compute_functions(bool forces, bool gga)
 {
-  CudaMatrix<vec_type4> points_position_gpu;
+  CudaMatrix<vec_type3> points_position_gpu;
   CudaMatrix<vec_type2> factor_ac_gpu;
   CudaMatrixUInt nuc_gpu;
   CudaMatrixUInt contractions_gpu;
 
   /** Load points from group **/
-  HostMatrix<vec_type4> points_position_cpu(number_of_points, 1);
+  HostMatrix<vec_type3> points_position_cpu(number_of_points, 1);
   uint i = 0;
   for (list<Point>::const_iterator p = points.begin(); p != points.end(); ++p, ++i) {
-    points_position_cpu(i) = vec_type4(p->position.x, p->position.y, p->position.z, 0);
+    points_position_cpu(i) = vec_type3(p->position.x, p->position.y, p->position.z);
   }
   points_position_gpu = points_position_cpu;
 

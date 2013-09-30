@@ -14,6 +14,8 @@
 
 #define MAX_CONTRACTIONS 7 
 
+#define WIDTH 3
+
 /* Los block sizes deben ser multiplos de 16 */
 
 #define FUNCTIONS_BLOCK_SIZE 128

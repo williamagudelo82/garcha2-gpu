@@ -1,7 +1,9 @@
-template<class scalar_type, bool compute_energy, bool compute_factor, bool lda>
+    
+    template<class scalar_type, bool compute_energy, bool compute_factor, bool lda>
 __global__ void gpu_compute_density(scalar_type* const energy, scalar_type* const factor, const scalar_type* const point_weights,
-                                    uint points, const scalar_type* rdm, const scalar_type* function_values, const vec_type<scalar_type,4>* gradient_values,
-                                    const vec_type<scalar_type,4>* hessian_values, uint m, scalar_type* out_partial_density, vec_type<scalar_type,4>* out_dxyz, vec_type<scalar_type,4>* out_dd1, vec_type<scalar_type,4>*  out_dd2)
+                                    uint points, const scalar_type* rdm, const scalar_type* function_values, const vec_type<scalar_type,WIDTH>* gradient_values,
+                                    const vec_type<scalar_type,WIDTH>* hessian_values, uint m, scalar_type* out_partial_density, 
+                                    vec_type<scalar_type,WIDTH>* out_dxyz, vec_type<scalar_type,WIDTH>* out_dd1, vec_type<scalar_type,WIDTH>*  out_dd2)
 {
 
   uint point = blockIdx.x;
@@ -12,19 +14,19 @@ __global__ void gpu_compute_density(scalar_type* const energy, scalar_type* cons
 
   scalar_type partial_density (0.0f);
   vec_type<scalar_type,WIDTH> dxyz, dd1, dd2;
-  dxyz=dd1=dd2 =vec_type<scalar_type,4>(0.0f,0.0f,0.0f,0.0f); 
+  dxyz=dd1=dd2 =vec_type<scalar_type,WIDTH>(0.0f,0.0f,0.0f); 
 
-  if (!lda) { dxyz = dd1 = dd2 = vec_type<scalar_type,4>(0.0f,0.0f,0.0f,0.0f); }
+  if (!lda) { dxyz = dd1 = dd2 = vec_type<scalar_type,WIDTH>(0.0f,0.0f,0.0f); }
 
     bool valid_thread = (point < points) && ( i < m );
  
 
     scalar_type w = 0.0f;
-    vec_type<scalar_type,4> w3, ww1, ww2;
-    if (!lda) { w3 = ww1 = ww2 = vec_type<scalar_type,4>(0.0f,0.0f,0.0f,0.0f); }
+    vec_type<scalar_type,WIDTH> w3, ww1, ww2;
+    if (!lda) { w3 = ww1 = ww2 = vec_type<scalar_type,WIDTH>(0.0f,0.0f,0.0f); }
 
     scalar_type Fi;
-    vec_type<scalar_type,4> Fgi, Fhi1, Fhi2;
+    vec_type<scalar_type,WIDTH> Fgi, Fhi1, Fhi2;
 
     //TODO: Cada thread del güarp trae su Fi.
     if (valid_thread) {
@@ -85,10 +87,12 @@ __global__ void gpu_compute_density(scalar_type* const energy, scalar_type* cons
               dxyz += Fgi * w + w3 * Fi;
               dd1 += Fgi * w3 * 2.0f + Fhi1 * w + ww1 * Fi;
 
-              vec_type<scalar_type,4> FgXXY(Fgi.x, Fgi.x, Fgi.y, 0.0f);
-              vec_type<scalar_type,4> w3YZZ(w3.y, w3.z, w3.z, 0.0f);
-              vec_type<scalar_type,4> FgiYZZ(Fgi.y, Fgi.z, Fgi.z, 0.0f);
-              vec_type<scalar_type,4> w3XXY(w3.x, w3.x, w3.y, 0.0f);
+              vec_type<scalar_type,WIDTH> FgXXY(Fgi.x, 
+                                                Fgi.x, 
+                                                Fgi.y);
+              vec_type<scalar_type,WIDTH> w3YZZ(w3.y, w3.z, w3.z);
+              vec_type<scalar_type,WIDTH> FgiYZZ(Fgi.y, Fgi.z, Fgi.z);
+              vec_type<scalar_type,WIDTH> w3XXY(w3.x, w3.x, w3.y);
 
               dd2 += FgXXY * w3YZZ + FgiYZZ * w3XXY + Fhi2 * w + ww2 * Fi;
             }
@@ -108,7 +112,7 @@ __global__ void gpu_compute_density(scalar_type* const energy, scalar_type* cons
 
     if(threadIdx.x==0)
     {
-        dxyz=dd1=dd2=vec_type<scalar_type,WIDTH>(0.0f,0.0f,0.0f,0.0f);
+        dxyz=dd1=dd2=vec_type<scalar_type,WIDTH>(0.0f,0.0f,0.0f);
         partial_density=scalar_type(0.0f);
 
         for(int j=0; (blockIdx.y < m/DENSITY_BLOCK_SIZE && j<DENSITY_BLOCK_SIZE) 

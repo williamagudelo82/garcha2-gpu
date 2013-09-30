@@ -1,5 +1,3 @@
-#define WIDTH 4
-
 template<class scalar_type, bool compute_energy, bool compute_factor, bool lda>
 __global__ void gpu_accumulate_point(scalar_type* const energy, scalar_type* const factor, const scalar_type* const point_weights,
                                     uint points, int block_height, scalar_type* partial_density, vec_type<scalar_type,WIDTH>*  dxyz, 
@@ -14,7 +12,7 @@ __global__ void gpu_accumulate_point(scalar_type* const energy, scalar_type* con
 
   scalar_type _partial_density(0.0f);
   vec_type<scalar_type,WIDTH> _dxyz, _dd1, _dd2;
-  _dxyz=_dd1=_dd2=vec_type<scalar_type,WIDTH>(0.0f,0.0f,0.0f,0.0f);
+  _dxyz=_dd1=_dd2=vec_type<scalar_type,WIDTH>(0.0f,0.0f,0.0f);
 
   bool valid_thread = (point < points);
   if (valid_thread) point_weight = point_weights[point];

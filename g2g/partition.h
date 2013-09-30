@@ -50,13 +50,14 @@ class PointGroup {
     typedef vec_type<scalar_type,4> vec_type4;
 
     #if CPU_KERNELS
+    
     G2G::HostMatrix<scalar_type> function_values;
     G2G::HostMatrix<vec_type3> gradient_values;
     G2G::HostMatrix<vec_type3> hessian_values;
-    #else
+    #else //Cambio aca para probar usar ,3 en vez de ,4
     G2G::CudaMatrix<scalar_type> function_values;
-    G2G::CudaMatrix<vec_type4> gradient_values;
-    G2G::CudaMatrix<vec_type4> hessian_values;
+    G2G::CudaMatrix<vec_type3> gradient_values;
+    G2G::CudaMatrix<vec_type3> hessian_values;
     #endif
 
     inline FunctionType small_function_type(uint f) const {

@@ -215,9 +215,9 @@ __device__ void closedpbe(scalar_type rho, scalar_type agrad, scalar_type delgra
 
 	//cout << rho << " " << delgrad << " " << rlap << " ret: " << expbe << " " << vxpbe << " " << ecpbe << " " << vcpbe << endl;
 }
-
+#define WIDTH 3
 template<class scalar_type, bool compute_exc, bool compute_y2a, bool lda>
-__device__ void gpu_pot(scalar_type dens, const vec_type<scalar_type,4>& grad, const vec_type<scalar_type,4>& hess1, const vec_type<scalar_type,4>& hess2, scalar_type& exc_corr, scalar_type& y2a)
+__device__ void gpu_pot(scalar_type dens, const vec_type<scalar_type,WIDTH>& grad, const vec_type<scalar_type,WIDTH>& hess1, const vec_type<scalar_type,WIDTH>& hess2, scalar_type& exc_corr, scalar_type& y2a)
 {
 	// data X alpha
   scalar_type ec;

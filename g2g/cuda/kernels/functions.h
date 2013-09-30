@@ -27,9 +27,9 @@ static __device__ __host__ void compute_function(uint m, uint idx, vec_type<scal
  */
 
 template<class scalar_type, bool do_forces, bool do_gga>
-__global__ void gpu_compute_functions(vec_type<scalar_type,4>* point_positions, uint points, uint* contractions, vec_type<scalar_type,2>* factor_ac,
-																			uint* nuc, scalar_type* function_values, vec_type<scalar_type,4>* gradient_values,
-                                      vec_type<scalar_type,4>* hessian_values, uint4 functions)
+__global__ void gpu_compute_functions(vec_type<scalar_type,3>* point_positions, uint points, uint* contractions, vec_type<scalar_type,2>* factor_ac,
+																			uint* nuc, scalar_type* function_values, vec_type<scalar_type,WIDTH>* gradient_values,
+                                      vec_type<scalar_type,WIDTH>* hessian_values, uint4 functions)
 {
 	dim3 pos = index(blockDim, blockIdx, threadIdx);
 	uint point = pos.x;
@@ -38,7 +38,7 @@ __global__ void gpu_compute_functions(vec_type<scalar_type,4>* point_positions, 
   bool valid_thread = (point < points);
   vec_type<scalar_type,3> point_position;
   if (valid_thread) {
-    vec_type<scalar_type,4> point_position4 = point_positions[point];
+    vec_type<scalar_type,WIDTH> point_position4 = point_positions[point];
     point_position = vec_type<scalar_type,3>(point_position4);
   }
 
@@ -76,41 +76,41 @@ __global__ void gpu_compute_functions(vec_type<scalar_type,4>* point_positions, 
         }
 
 				vec_type<scalar_type,3> vxxy, vyzz;
-				if (do_gga) { vxxy = vec_type<scalar_type,3>(v.x(), v.x(), v.y()); vyzz = vec_type<scalar_type,3>(v.y(), v.z(), v.z()); }
+				if (do_gga) { vxxy = vec_type<scalar_type,3>(v.x, v.x, v.y); vyzz = vec_type<scalar_type,3>(v.y, v.z, v.z); }
 
         if (i + ii < functions.x) {
           function_values[idx] = t;
-          if (do_forces || do_gga) gradient_values[idx] = vec_type<scalar_type,4>(v * (-2.0f * tg));
+          if (do_forces || do_gga) gradient_values[idx] = vec_type<scalar_type,WIDTH>(v * (-2.0f * tg));
           if (do_gga) {
-            hessian_values[hidx1] = vec_type<scalar_type,4>((v * v) * 4.0f * th - 2.0f * tg); // Fxx, Fxy, Fxz
-            hessian_values[hidx2] = vec_type<scalar_type,4>(vxxy * vyzz * 4.0f * th); // Fxy, Fxz, Fyz
+            hessian_values[hidx1] = vec_type<scalar_type,WIDTH>((v * v) * 4.0f * th - 2.0f * tg); // Fxx, Fxy, Fxz
+            hessian_values[hidx2] = vec_type<scalar_type,WIDTH>(vxxy * vyzz * 4.0f * th); // Fxy, Fxz, Fyz
           }
         }
         else if (i + ii < (functions.x + functions.y * 3)) {
           uint p_idx = ((i + ii) - functions.x) % 3;
           switch(p_idx) {
             case 0:
-              function_values[idx] = v.x() * t;
-              if (do_forces || do_gga) gradient_values[idx] = vec_type<scalar_type,4>(vec_type<scalar_type,3>(t, 0.0f, 0.0f) - v * 2.0f * tg * v.x());
+              function_values[idx] = v.x * t;
+              if (do_forces || do_gga) gradient_values[idx] = vec_type<scalar_type,WIDTH>(vec_type<scalar_type,3>(t, 0.0f, 0.0f) - v * 2.0f * tg * v.x);
               if (do_gga) {
-                hessian_values[hidx1] = vec_type<scalar_type,4>((v * v) * 4.0f * th * v.x() - vec_type<scalar_type,3>(6.0f, 2.0f, 2.0f) * tg * v.x());
-                hessian_values[hidx2] = vec_type<scalar_type,4>((vxxy * vyzz) * 4.0f * th * v.x()  - vec_type<scalar_type,3>(v.y(), v.z(), 0.0f) * 2.0f * tg);
+                hessian_values[hidx1] = vec_type<scalar_type,WIDTH>((v * v) * 4.0f * th * v.x - vec_type<scalar_type,3>(6.0f, 2.0f, 2.0f) * tg * v.x);
+                hessian_values[hidx2] = vec_type<scalar_type,WIDTH>((vxxy * vyzz) * 4.0f * th * v.x  - vec_type<scalar_type,3>(v.y, v.z, 0.0f) * 2.0f * tg);
               }
             break;
             case 1:
-              function_values[idx] = v.y() * t;
-              if (do_forces || do_gga) gradient_values[idx] = vec_type<scalar_type,4>(vec_type<scalar_type,3>(0.0f, t, 0.0f) - v * 2.0f * tg * v.y());
+              function_values[idx] = v.y * t;
+              if (do_forces || do_gga) gradient_values[idx] = vec_type<scalar_type,WIDTH>(vec_type<scalar_type,3>(0.0f, t, 0.0f) - v * 2.0f * tg * v.y);
               if (do_gga) {
-                hessian_values[hidx1] = vec_type<scalar_type,4>((v * v) * 4.0f * th * v.y() - vec_type<scalar_type,3>(2.0f, 6.0f, 2.0f) * tg * v.y());
-                hessian_values[hidx2] = vec_type<scalar_type,4>((vxxy * vyzz) * 4.0f * th * v.y() - vec_type<scalar_type,3>(v.x(), 0.0f, v.z()) * 2.0f * tg);
+                hessian_values[hidx1] = vec_type<scalar_type,WIDTH>((v * v) * 4.0f * th * v.y - vec_type<scalar_type,3>(2.0f, 6.0f, 2.0f) * tg * v.y);
+                hessian_values[hidx2] = vec_type<scalar_type,WIDTH>((vxxy * vyzz) * 4.0f * th * v.y - vec_type<scalar_type,3>(v.x, 0.0f, v.z) * 2.0f * tg);
               }
             break;
             case 2:
-              function_values[idx] = v.z() * t;
-              if (do_forces || do_gga) gradient_values[idx] = vec_type<scalar_type,4>(vec_type<scalar_type,3>(0.0f, 0.0f, t) - v * 2.0f * tg * v.z());
+              function_values[idx] = v.z * t;
+              if (do_forces || do_gga) gradient_values[idx] = vec_type<scalar_type,WIDTH>(vec_type<scalar_type,3>(0.0f, 0.0f, t) - v * 2.0f * tg * v.z);
               if (do_gga) {
-                hessian_values[hidx1] = vec_type<scalar_type,4>((v * v) * 4.0f * th * v.z() - vec_type<scalar_type,3>(2.0f, 2.0f, 6.0f) * tg * v.z());
-                hessian_values[hidx2] = vec_type<scalar_type,4>((vxxy * vyzz) * 4.0f * th * v.z() - vec_type<scalar_type,3>(0.0f, v.x(), v.y()) * 2.0f * tg);
+                hessian_values[hidx1] = vec_type<scalar_type,WIDTH>((v * v) * 4.0f * th * v.z - vec_type<scalar_type,3>(2.0f, 2.0f, 6.0f) * tg * v.z);
+                hessian_values[hidx2] = vec_type<scalar_type,WIDTH>((vxxy * vyzz) * 4.0f * th * v.z - vec_type<scalar_type,3>(0.0f, v.x, v.y) * 2.0f * tg);
               }
             break;
           }
@@ -119,51 +119,51 @@ __global__ void gpu_compute_functions(vec_type<scalar_type,4>* point_positions, 
           uint d_idx = ((i + ii) - functions.x - functions.y * 3) % 6;
           switch(d_idx) {
             case 0:
-              function_values[idx] = t * v.x() * v.x() * gpu_normalization_factor;
-              if (do_forces || do_gga) gradient_values[idx] = vec_type<scalar_type,4>((vec_type<scalar_type,3>(2.0f * v.x(), 0.0f      , 0.0f      ) * t - v * 2.0f * tg * v.x() * v.x()) * gpu_normalization_factor);
+              function_values[idx] = t * v.x * v.x * gpu_normalization_factor;
+              if (do_forces || do_gga) gradient_values[idx] = vec_type<scalar_type,WIDTH>((vec_type<scalar_type,3>(2.0f * v.x, 0.0f      , 0.0f      ) * t - v * 2.0f * tg * v.x * v.x) * gpu_normalization_factor);
               if (do_gga) {
-                hessian_values[hidx1] = vec_type<scalar_type,4>(((v * v) * 4.0f * th * (v.x() * v.x())       - vec_type<scalar_type,3>(10.0f, 2.0f, 2.0f) * tg * (v.x() * v.x()) + vec_type<scalar_type,3>(2.0f * t, 0.0f    , 0.0f)) * gpu_normalization_factor);
-                hessian_values[hidx2] = vec_type<scalar_type,4>(((vxxy * vyzz) * 4.0f * th * (v.x() * v.x()) - vec_type<scalar_type,3>(4.0f,  4.0f, 0.0f) * (vxxy * vyzz) * tg                                ) * gpu_normalization_factor);
+                hessian_values[hidx1] = vec_type<scalar_type,WIDTH>(((v * v) * 4.0f * th * (v.x * v.x)       - vec_type<scalar_type,3>(10.0f, 2.0f, 2.0f) * tg * (v.x * v.x) + vec_type<scalar_type,3>(2.0f * t, 0.0f    , 0.0f)) * gpu_normalization_factor);
+                hessian_values[hidx2] = vec_type<scalar_type,WIDTH>(((vxxy * vyzz) * 4.0f * th * (v.x * v.x) - vec_type<scalar_type,3>(4.0f,  4.0f, 0.0f) * (vxxy * vyzz) * tg                                ) * gpu_normalization_factor);
               }
             break;
             case 1:
-              function_values[idx] = t * v.y() * v.x();
-              if (do_forces || do_gga) gradient_values[idx] = vec_type<scalar_type,4>(vec_type<scalar_type,3>(v.y()        , v.x()       , 0.0f      ) * t - v * 2.0f * tg * v.y() * v.x());
+              function_values[idx] = t * v.y * v.x;
+              if (do_forces || do_gga) gradient_values[idx] = vec_type<scalar_type,WIDTH>(vec_type<scalar_type,3>(v.y        , v.x       , 0.0f      ) * t - v * 2.0f * tg * v.y * v.x);
               if (do_gga) {
-                hessian_values[hidx1] = vec_type<scalar_type,4>(((v * v) * 4.0f * th * (v.x() * v.y())       - vec_type<scalar_type,3>(6.0f,  6.0f, 2.0f) * tg * (v.x() * v.y())                               ));
-                hessian_values[hidx2] = vec_type<scalar_type,4>(((vxxy * vyzz) * 4.0f * th * (v.x() * v.y()) - vec_type<scalar_type,3>(2.0f * (v.x() * v.x() + v.y() * v.y()), 2.0f * v.y() * v.z(), 2.0f * v.x() * v.z()) * tg + vec_type<scalar_type,3>(t     , 0.0f    , 0.0f)));
+                hessian_values[hidx1] = vec_type<scalar_type,WIDTH>(((v * v) * 4.0f * th * (v.x * v.y)       - vec_type<scalar_type,3>(6.0f,  6.0f, 2.0f) * tg * (v.x * v.y)                               ));
+                hessian_values[hidx2] = vec_type<scalar_type,WIDTH>(((vxxy * vyzz) * 4.0f * th * (v.x * v.y) - vec_type<scalar_type,3>(2.0f * (v.x * v.x + v.y * v.y), 2.0f * v.y * v.z, 2.0f * v.x * v.z) * tg + vec_type<scalar_type,3>(t     , 0.0f    , 0.0f)));
               }
             break;
             case 2:
-              function_values[idx] = t * v.y() * v.y() * gpu_normalization_factor;
-              if (do_forces || do_gga) gradient_values[idx] = vec_type<scalar_type,4>((vec_type<scalar_type,3>(0.0f      , 2.0f * v.y(), 0.0f      ) * t - v * 2.0f * tg * v.y() * v.y()) * gpu_normalization_factor);
+              function_values[idx] = t * v.y * v.y * gpu_normalization_factor;
+              if (do_forces || do_gga) gradient_values[idx] = vec_type<scalar_type,WIDTH>((vec_type<scalar_type,3>(0.0f      , 2.0f * v.y, 0.0f      ) * t - v * 2.0f * tg * v.y * v.y) * gpu_normalization_factor);
               if (do_gga) {
-                hessian_values[hidx1] = vec_type<scalar_type,4>(((v * v) * 4.0f * th * (v.y() * v.y())       - vec_type<scalar_type,3>(2.0f, 10.0f, 2.0f) * tg * (v.y() * v.y()) + vec_type<scalar_type,3>(0.0f    , 2.0f * t, 0.0f)) * gpu_normalization_factor);
-                hessian_values[hidx2] = vec_type<scalar_type,4>(((vxxy * vyzz) * 4.0f * th * (v.y() * v.y()) - vec_type<scalar_type,3>(4.0f,  0.0f, 4.0f) * (vxxy * vyzz) * tg                                ) * gpu_normalization_factor);
+                hessian_values[hidx1] = vec_type<scalar_type,WIDTH>(((v * v) * 4.0f * th * (v.y * v.y)       - vec_type<scalar_type,3>(2.0f, 10.0f, 2.0f) * tg * (v.y * v.y) + vec_type<scalar_type,3>(0.0f    , 2.0f * t, 0.0f)) * gpu_normalization_factor);
+                hessian_values[hidx2] = vec_type<scalar_type,WIDTH>(((vxxy * vyzz) * 4.0f * th * (v.y * v.y) - vec_type<scalar_type,3>(4.0f,  0.0f, 4.0f) * (vxxy * vyzz) * tg                                ) * gpu_normalization_factor);
               }
             break;
             case 3:
-              function_values[idx] = t * v.z() * v.x();
-              if (do_forces || do_gga) gradient_values[idx] = vec_type<scalar_type,4>(vec_type<scalar_type,3>(v.z()        , 0.0f      , v.x()       ) * t - v * 2.0f * tg * v.z() * v.x());
+              function_values[idx] = t * v.z * v.x;
+              if (do_forces || do_gga) gradient_values[idx] = vec_type<scalar_type,WIDTH>(vec_type<scalar_type,3>(v.z        , 0.0f      , v.x       ) * t - v * 2.0f * tg * v.z * v.x);
               if (do_gga) {
-                hessian_values[hidx1] = vec_type<scalar_type,4>(((v * v) * 4.0f * th * (v.x() * v.z())       - vec_type<scalar_type,3>(6.0f,  2.0f, 6.0f) * tg * (v.x() * v.z())                                ));
-                hessian_values[hidx2] = vec_type<scalar_type,4>(((vxxy * vyzz) * 4.0f * th * (v.x() * v.z()) - vec_type<scalar_type,3>(2.0f * v.y() * v.z(), 2.0f * (v.x() * v.x() + v.z() * v.z()), 2.0f * v.x() * v.y()) * tg + vec_type<scalar_type,3>(0.0f,      t,     0.0f)));
+                hessian_values[hidx1] = vec_type<scalar_type,WIDTH>(((v * v) * 4.0f * th * (v.x * v.z)       - vec_type<scalar_type,3>(6.0f,  2.0f, 6.0f) * tg * (v.x * v.z)                                ));
+                hessian_values[hidx2] = vec_type<scalar_type,WIDTH>(((vxxy * vyzz) * 4.0f * th * (v.x * v.z) - vec_type<scalar_type,3>(2.0f * v.y * v.z, 2.0f * (v.x * v.x + v.z * v.z), 2.0f * v.x * v.y) * tg + vec_type<scalar_type,3>(0.0f,      t,     0.0f)));
               }
             break;
             case 4:
-              function_values[idx] = t * v.z() * v.y();
-              if (do_forces || do_gga) gradient_values[idx] = vec_type<scalar_type,4>(vec_type<scalar_type,3>(0.0f       , v.z()       , v.y()       ) * t - v * 2.0f * tg * v.z() * v.y());
+              function_values[idx] = t * v.z * v.y;
+              if (do_forces || do_gga) gradient_values[idx] = vec_type<scalar_type,WIDTH>(vec_type<scalar_type,3>(0.0f       , v.z       , v.y       ) * t - v * 2.0f * tg * v.z * v.y);
               if (do_gga) {
-                hessian_values[hidx1] = vec_type<scalar_type,4>(((v * v) * 4.0f * th * (v.y() * v.z())       - vec_type<scalar_type,3>(2.0f,  6.0f, 6.0f) * tg * (v.y() * v.z())                                ));
-                hessian_values[hidx2] = vec_type<scalar_type,4>(((vxxy * vyzz) * 4.0f * th * (v.y() * v.z()) - vec_type<scalar_type,3>(2.0f * v.x() * v.z(), 2.0f * v.x() * v.y(), 2.0f * (v.y() * v.y() + v.z() * v.z())) * tg + vec_type<scalar_type,3>(0.0f,      0.0f,     t)));
+                hessian_values[hidx1] = vec_type<scalar_type,WIDTH>(((v * v) * 4.0f * th * (v.y * v.z)       - vec_type<scalar_type,3>(2.0f,  6.0f, 6.0f) * tg * (v.y * v.z)                                ));
+                hessian_values[hidx2] = vec_type<scalar_type,WIDTH>(((vxxy * vyzz) * 4.0f * th * (v.y * v.z) - vec_type<scalar_type,3>(2.0f * v.x * v.z, 2.0f * v.x * v.y, 2.0f * (v.y * v.y + v.z * v.z)) * tg + vec_type<scalar_type,3>(0.0f,      0.0f,     t)));
               }
             break;
             case 5:
-              function_values[idx] = t * v.z() * v.z() * gpu_normalization_factor;
-              if (do_forces || do_gga) gradient_values[idx] = vec_type<scalar_type,4>((vec_type<scalar_type,3>(0.0f      , 0.0f      , 2.0f * v.z()) * t - v * 2.0f * tg * v.z() * v.z()) * gpu_normalization_factor);
+              function_values[idx] = t * v.z * v.z * gpu_normalization_factor;
+              if (do_forces || do_gga) gradient_values[idx] = vec_type<scalar_type,WIDTH>((vec_type<scalar_type,3>(0.0f      , 0.0f      , 2.0f * v.z) * t - v * 2.0f * tg * v.z * v.z) * gpu_normalization_factor);
               if (do_gga) {
-                hessian_values[hidx1] = vec_type<scalar_type,4>(((v * v) * 4.0f * th * (v.z() * v.z())       - vec_type<scalar_type,3>(2.0f,  2.0f, 10.0f) * tg * (v.z() * v.z()) + vec_type<scalar_type,3>(0.0f,      0.0f, 2.0f * t)) * gpu_normalization_factor);
-                hessian_values[hidx2] = vec_type<scalar_type,4>(((vxxy * vyzz) * 4.0f * th * (v.z() * v.z()) - (vxxy * vyzz) * vec_type<scalar_type,3>(0.0f,  4.0f, 4.0f) * tg                                 ) * gpu_normalization_factor);
+                hessian_values[hidx1] = vec_type<scalar_type,WIDTH>(((v * v) * 4.0f * th * (v.z * v.z)       - vec_type<scalar_type,3>(2.0f,  2.0f, 10.0f) * tg * (v.z * v.z) + vec_type<scalar_type,3>(0.0f,      0.0f, 2.0f * t)) * gpu_normalization_factor);
+                hessian_values[hidx2] = vec_type<scalar_type,WIDTH>(((vxxy * vyzz) * 4.0f * th * (v.z * v.z) - (vxxy * vyzz) * vec_type<scalar_type,3>(0.0f,  4.0f, 4.0f) * tg                                 ) * gpu_normalization_factor);
               }
             break;
           }

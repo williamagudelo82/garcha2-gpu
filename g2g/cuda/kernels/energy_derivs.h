@@ -1,8 +1,8 @@
 // TODO: si se juntara con energy.h (teniendo un if templatizado tipo do_forces, que hace que solo se desde donde se debe (j >= i)) se leeria RMM una sola vez
 
 template<class scalar_type>
-__global__ void gpu_compute_density_derivs(scalar_type* function_values, vec_type<scalar_type,4>* gradient_values, scalar_type* rdm,
-                                           uint* nuc, vec_type<scalar_type,4>* density_deriv, uint points, uint m, uint nuc_count)
+__global__ void gpu_compute_density_derivs(scalar_type* function_values, vec_type<scalar_type,WIDTH>* gradient_values, scalar_type* rdm,
+                                           uint* nuc, vec_type<scalar_type,WIDTH>* density_deriv, uint points, uint m, uint nuc_count)
 {
   uint point = index_x(blockDim, blockIdx, threadIdx);
   bool valid_thread = (point < points);
@@ -18,7 +18,7 @@ __global__ void gpu_compute_density_derivs(scalar_type* function_values, vec_typ
     __syncthreads();
 
     for (uint i = 0; i < DENSITY_DERIV_BATCH_SIZE2 && (i + bi) < m; i++) {
-      vec_type<scalar_type,4> Fgi;
+      vec_type<scalar_type,WIDTH> Fgi;
       if (valid_thread) Fgi = gradient_values[COALESCED_DIMENSION(points) * (bi + i) + point];
       scalar_type w = 0.0f;
 
