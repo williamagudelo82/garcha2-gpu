@@ -47,9 +47,9 @@ __global__ void gpu_compute_density(scalar_type* const energy, scalar_type* cons
         for (int bj = 0; bj <= i; bj += DENSITY_BLOCK_SIZE) 
         { //Density deberia ser GET_DENSITY_BLOCK_SIZE
      
+            __syncthreads();
             if( (bj+position<m) && (point<points) )
             {
-            __syncthreads();
 
                 fj_sh[position] = function_values[COALESCED_DIMENSION(points) * (bj + position) + point];
                 
