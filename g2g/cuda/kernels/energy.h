@@ -10,6 +10,30 @@ static __inline__ __device__ double fetch_double(texture<int2, 2> t, float x, fl
 #define fetch(t,x,y) tex2D(t,x,y)
 #endif
 
+static __inline__ __device__ float shfl(float var, int laneMask, int width=warpSize)
+{
+    return __shfl(var,laneMask,width);
+}
+static __inline__ __device__ double shfl(double var, int laneMask, int width=warpSize)
+{
+    int hi, lo;
+    asm volatile( "mov.b64 { %0, %1 }, %2;" : "=r"(lo), "=r"(hi) : "d"(var) );
+    hi = __shfl( hi, laneMask, width );
+    lo = __shfl( lo, laneMask, width );
+    return __hiloint2double( hi, lo );
+}
+template<class scalar_type>
+static __inline__ __device__ vec_type<scalar_type,4> shfl(vec_type<scalar_type, 4> var, int laneMask, int width=warpSize)
+{
+    vec_type<scalar_type, 4> tmp;
+    tmp.x = shfl(var.x, laneMask, width);
+    tmp.y = shfl(var.y, laneMask, width);
+    tmp.z = shfl(var.z, laneMask, width);
+    return tmp;
+}
+
+
+
 template<class scalar_type, bool compute_energy, bool compute_factor, bool lda>
 __global__ void gpu_compute_density(scalar_type* const energy, scalar_type* const factor, const scalar_type* const point_weights,
                                     uint points, const scalar_type* function_values, const vec_type<scalar_type,4>* gradient_values,
@@ -23,7 +47,6 @@ __global__ void gpu_compute_density(scalar_type* const energy, scalar_type* cons
 
     scalar_type partial_density (0.0f);
     vec_type<scalar_type,WIDTH> dxyz, dd1, dd2;
-    dxyz=dd1=dd2 =vec_type<scalar_type,4>(0.0f,0.0f,0.0f,0.0f);
 
     if (!lda)
     {
@@ -40,16 +63,17 @@ __global__ void gpu_compute_density(scalar_type* const energy, scalar_type* cons
         w3 = ww1 = ww2 = vec_type<scalar_type,4>(0.0f,0.0f,0.0f,0.0f);
     }
 
+    scalar_type Fj_memoria;
+    vec_type<scalar_type,4> Fgj_memoria;
+    vec_type<scalar_type,4> Fhj1_memoria;
+    vec_type<scalar_type,4> Fhj2_memoria;
+
     scalar_type Fi;
     vec_type<scalar_type,4> Fgi, Fhi1, Fhi2;
 
     int position = threadIdx.x;
 
-    __shared__ scalar_type fj_sh[DENSITY_BLOCK_SIZE];
-    __shared__ vec_type<scalar_type, WIDTH> fgj_sh [DENSITY_BLOCK_SIZE];
-    __shared__ vec_type<scalar_type, WIDTH> fh1j_sh [DENSITY_BLOCK_SIZE];
-    __shared__ vec_type<scalar_type, WIDTH> fh2j_sh [DENSITY_BLOCK_SIZE];
-
+    
     for (int bj = min_i; bj >= 0; bj -= DENSITY_BLOCK_SIZE)
     {
         //Density deberia ser GET_DENSITY_BLOCK_SIZE
@@ -57,14 +81,12 @@ __global__ void gpu_compute_density(scalar_type* const energy, scalar_type* cons
         __syncthreads();
         if( bj+position<m )
         {
-
-            fj_sh[position] = function_values[(m) * point + (bj+position)];
+            Fj_memoria = function_values[(m) * point + (bj+position)];
             if(!lda)
             {
-                fgj_sh[position] = gradient_values[(m) * point + (bj+position)];
-
-                fh1j_sh[position] = hessian_values[(m)*2 * point +(2 * (bj + position) + 0)];
-                fh2j_sh[position] = hessian_values[(m)*2 * point +(2 * (bj + position) + 1)];
+                Fgj_memoria = gradient_values[(m) * point + (bj+position)];
+                Fhj1_memoria = hessian_values[(m)*2 * point +(2 * (bj + position) + 0)];
+                Fhj2_memoria = hessian_values[(m)*2 * point +(2 * (bj + position) + 1)];
             }
         }
 
@@ -72,32 +94,37 @@ __global__ void gpu_compute_density(scalar_type* const energy, scalar_type* cons
         __syncthreads();
         if(bj==min_i)
         {
-            Fi=fj_sh[position];
+            //Fi=fj_sh[position];
+            //Fi=  shfl( Fj_memoria, position, WARP_SIZE);
+            Fi = Fj_memoria;
             if(!lda)
             {
-                Fgi = fgj_sh[position];
-                Fhi1 = fh1j_sh[position] ;
-                Fhi2 = fh2j_sh[position] ;
+                Fgi =  Fgj_memoria;
+                Fhi1 = Fhj1_memoria;
+                Fhi2 = Fhj2_memoria;
             }
         }
 
-        if(valid_thread)
+        for(int j=0; j<DENSITY_BLOCK_SIZE /*&& bj+j <= i*/; j++)
         {
-            for(int j=0; j<DENSITY_BLOCK_SIZE /*&& bj+j <= i*/; j++)
+          
+            //fetch es una macro para tex2D
+            scalar_type rdm_this_thread = fetch(rmm_input_gpu_tex, (float)(bj+j), (float)i);
+            scalar_type Fj_otro = shfl(Fj_memoria, j, WARP_SIZE);
+            
+            
+
+            w += rdm_this_thread * Fj_otro;
+            if(!lda)
             {
-              
-                //fetch es una macro para tex2D
-                scalar_type rdm_this_thread = fetch(rmm_input_gpu_tex, (float)(bj+j), (float)i);
-
-                w += rdm_this_thread * fj_sh[j];
-                if(!lda)
-                {
-                    w3 += fgj_sh[j]* rdm_this_thread ;
-                    ww1 += fh1j_sh[j] * rdm_this_thread;
-                    ww2 += fh2j_sh[j] * rdm_this_thread;
-                }
-
+                vec_type<scalar_type,4> Fgj_otro = shfl(Fgj_memoria, j ,WARP_SIZE);
+                vec_type<scalar_type,4> Fhj1_otro = shfl(Fhj1_memoria, j ,WARP_SIZE);
+                vec_type<scalar_type,4> Fhj2_otro = shfl(Fhj2_memoria, j ,WARP_SIZE);
+                w3 += Fgj_otro* rdm_this_thread ;
+                ww1 += Fhj1_otro * rdm_this_thread;
+                ww2 += Fhj2_otro * rdm_this_thread;
             }
+
         }
     }
     if(valid_thread)
@@ -120,41 +147,28 @@ __global__ void gpu_compute_density(scalar_type* const energy, scalar_type* cons
 
 
     __syncthreads();
-    //Estamos reutilizando la memoria shared por block para hacer el acumulado por block.
-    if(valid_thread)
+    if(!valid_thread)
     {
-        fj_sh[position]=partial_density;
-        fgj_sh[position]=dxyz;
-        fh1j_sh[position]=dd1;
-        fh2j_sh[position]=dd2;
-    }
-    else
-    {
-        fj_sh[position]=scalar_type(0.0f);
-        fgj_sh[position]=vec_type<scalar_type,4>(0.0f,0.0f,0.0f,0.0f);
-        fh1j_sh[position]=vec_type<scalar_type,4>(0.0f,0.0f,0.0f,0.0f);
-        fh2j_sh[position]=vec_type<scalar_type,4>(0.0f,0.0f,0.0f,0.0f);
+        partial_density=0.0f;
+        dd1 = dd2 = dxyz = vec_type<scalar_type, 4>(0.0f, 0.0f, 0.0f, 0.0f);
     }
     __syncthreads();
 
     for(int j=2;  j <= DENSITY_BLOCK_SIZE ; j=j*2) // 
     {
         int index=position + DENSITY_BLOCK_SIZE/j;
-        if( position < DENSITY_BLOCK_SIZE/j)
-        {
-            fj_sh[position]      += fj_sh[index];
-            fgj_sh[position]     += fgj_sh[index];
-            fh1j_sh[position]    += fh1j_sh[index];
-            fh2j_sh[position]    += fh2j_sh[index];
-        }
+        partial_density += shfl( partial_density, index, WARP_SIZE);
+        dxyz += shfl(dxyz, index,WARP_SIZE);        
+        dd1 += shfl(dd1, index,WARP_SIZE);        
+        dd2 += shfl(dd2, index,WARP_SIZE);        
     }
     if(threadIdx.x==0)
     {
         const int myPoint = blockIdx.y*points + blockIdx.x;
-        out_partial_density[myPoint] = fj_sh[position];
-        out_dxyz[myPoint]            = fgj_sh[position];
-        out_dd1[myPoint]             = fh1j_sh[position];
-        out_dd2[myPoint]             = fh2j_sh[position];
+        out_partial_density[myPoint] = partial_density;
+        out_dxyz[myPoint]            = dxyz;
+        out_dd1[myPoint]             = dd1;
+        out_dd2[myPoint]             = dd2;
     }
 }
 
