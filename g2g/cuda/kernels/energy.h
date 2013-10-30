@@ -18,6 +18,8 @@ __global__ void gpu_compute_density(scalar_type* const energy, scalar_type* cons
 
     uint point = blockIdx.x;
     uint i     = threadIdx.x + blockIdx.y * DENSITY_BLOCK_SIZE;
+    
+    uint min_i = blockIdx.y*DENSITY_BLOCK_SIZE; //Para invertir el loop de bj
 
     scalar_type partial_density (0.0f);
     vec_type<scalar_type,WIDTH> dxyz, dd1, dd2;
@@ -48,13 +50,13 @@ __global__ void gpu_compute_density(scalar_type* const energy, scalar_type* cons
     __shared__ vec_type<scalar_type, WIDTH> fh1j_sh [DENSITY_BLOCK_SIZE];
     __shared__ vec_type<scalar_type, WIDTH> fh2j_sh [DENSITY_BLOCK_SIZE];
 
-    for (int bj = 0; bj <= i; bj += DENSITY_BLOCK_SIZE)
+    for (int bj = min_i; bj >= 0; bj -= DENSITY_BLOCK_SIZE)
     {
         //Density deberia ser GET_DENSITY_BLOCK_SIZE
 
+        __syncthreads();
         if( bj+position<m )
         {
-            __syncthreads();
 
             fj_sh[position] = function_values[(m) * point + (bj+position)];
             if(!lda)
@@ -68,17 +70,16 @@ __global__ void gpu_compute_density(scalar_type* const energy, scalar_type* cons
 
 
         __syncthreads();
-
-              if((i-bj)< DENSITY_BLOCK_SIZE ) { 
-                     Fi=fj_sh[i-bj];
-                if(!lda)
-                {
- 
-                    Fgi = fgj_sh[i-bj];
-                    Fhi1 = fh1j_sh[i-bj] ;
-                    Fhi2 = fh2j_sh[i-bj] ;
-                    }
-                }
+        if(bj==min_i)
+        {
+            Fi=fj_sh[position];
+            if(!lda)
+            {
+                Fgi = fgj_sh[position];
+                Fhi1 = fh1j_sh[position] ;
+                Fhi2 = fh2j_sh[position] ;
+            }
+        }
 
         if(valid_thread)
         {
@@ -87,10 +88,7 @@ __global__ void gpu_compute_density(scalar_type* const energy, scalar_type* cons
               
                 //fetch es una macro para tex2D
                 scalar_type rdm_this_thread = fetch(rmm_input_gpu_tex, (float)(bj+j), (float)i);
-              /*    if((bj+j) > i) {
-                       rdm_this_thread = 0.0f;
-                                }*/
-//                   else
+
                 w += rdm_this_thread * fj_sh[j];
                 if(!lda)
                 {
